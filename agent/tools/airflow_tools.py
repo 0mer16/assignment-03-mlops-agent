@@ -63,7 +63,8 @@ def _get_token(force_refresh: bool = False) -> str:
     except requests.RequestException as exc:
         raise ToolUnavailable(f"cannot reach the Airflow API at {base}: {exc}") from exc
 
-    if response.status_code != 200:
+    # Airflow 3 answers the token endpoint with 201 Created, not 200.
+    if response.status_code not in (200, 201):
         raise ToolUnavailable(
             f"Airflow rejected the credentials for user {settings.airflow_username!r} "
             f"(HTTP {response.status_code})"
