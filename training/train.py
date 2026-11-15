@@ -47,9 +47,24 @@ def _git(args: list[str]) -> str:
     return done.stdout.strip() if done.returncode == 0 else ""
 
 
+def _repo_relative(path: Path) -> str:
+    """Path as the repository sees it, with forward slashes.
+
+    Callers pass anything from an absolute path to 'data/dataset.csv', and dvc
+    repro uses the relative form, so resolve before comparing.
+    """
+    resolved = Path(path).resolve()
+    try:
+        return str(resolved.relative_to(REPO_ROOT)).replace("\\", "/")
+    except ValueError:
+        # Outside the repository, for example the DAG's processed copy.
+        return str(resolved).replace("\\", "/")
+
+
 def dataset_provenance(data_path: Path) -> dict[str, str]:
     """Collect the identity of the dataset being trained on."""
-    provenance: dict[str, str] = {"dataset.path": str(data_path.relative_to(REPO_ROOT)).replace("\\", "/")}
+    data_path = Path(data_path).resolve()
+    provenance: dict[str, str] = {"dataset.path": _repo_relative(data_path)}
 
     pointer = Path(f"{data_path}.dvc")
     if pointer.exists():
@@ -57,7 +72,7 @@ def dataset_provenance(data_path: Path) -> dict[str, str]:
         outs = content.get("outs") or [{}]
         if outs[0].get("md5"):
             provenance["dataset.dvc_hash"] = outs[0]["md5"]
-        rel_pointer = str(pointer.relative_to(REPO_ROOT)).replace("\\", "/")
+        rel_pointer = _repo_relative(pointer)
         commit = _git(["log", "-1", "--format=%H", "--", rel_pointer])
         if commit:
             provenance["dataset.git_commit"] = commit
