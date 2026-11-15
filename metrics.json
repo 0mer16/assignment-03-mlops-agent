@@ -1,0 +1,23 @@
+{
+  "run_id": "b6d1fbf8b77141679fe146d681f09e16",
+  "experiment": "failure-prediction",
+  "metrics": {
+    "accuracy": 0.7733333333333333,
+    "precision": 0.7733333333333333,
+    "recall": 0.7733333333333333,
+    "f1_score": 0.7733333333333333,
+    "roc_auc": 0.8786
+  },
+  "params": {
+    "n_estimators": 120,
+    "max_depth": null,
+    "test_size": 0.25,
+    "random_state": 42,
+    "rows": 1200,
+    "features": 4
+  },
+  "dataset.path": "data/dataset.csv",
+  "dataset.dvc_hash": "9c8da426164432cf5dd9a9333f560bd1",
+  "dataset.git_commit": "1c01f0c4b03cc4f9641588d8c55f8e1865afe73c",
+  "dataset.version": "dataset-v1"
+}

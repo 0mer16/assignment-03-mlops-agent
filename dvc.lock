@@ -1,0 +1,23 @@
+schema: '2.0'
+stages:
+  train:
+    cmd: python training/train.py --data data/dataset.csv --experiment 
+      failure-prediction
+    deps:
+    - path: data/dataset.csv
+      hash: md5
+      md5: 9c8da426164432cf5dd9a9333f560bd1
+      size: 42646
+    - path: training/train.py
+      hash: md5
+      md5: b595db5e96ae13346c179c373fbda52c
+      size: 7552
+    outs:
+    - path: metrics.json
+      hash: md5
+      md5: 64bfd40174dac24e6a98665de14662e4
+      size: 644
+    - path: models/model.joblib
+      hash: md5
+      md5: 865ca302aef4bfb634c19ecc7d906629
+      size: 2383977
