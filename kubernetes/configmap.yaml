@@ -1,0 +1,13 @@
+# Non-sensitive configuration only. Credentials belong in a Secret, never here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inference-api-config
+  namespace: mlops
+  labels:
+    app: inference-api
+data:
+  APP_VERSION: "1.0.0"
+  MODEL_NAME: "failure-prediction"
+  MODEL_PATH: "/app/models/model.joblib"
+  LOG_LEVEL: "INFO"

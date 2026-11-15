@@ -1,0 +1,105 @@
+name: CI
+
+# Runs on every pull request into main. External systems are never contacted:
+# the suite mocks DVC, MLflow, Airflow and Kubernetes, so CI needs no cluster,
+# no tracking server and no credentials.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AGENT_PLANNER: rules
+  AGENT_DISABLE_FILE_LOG: "1"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ruff
+        run: ruff check .
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Pytest
+        run: pytest -v --maxfail=1
+
+  validate-manifests:
+    name: Validate Kubernetes manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Parse every manifest
+        run: |
+          python - <<'PY'
+          import pathlib, sys, yaml
+          failures = []
+          for path in sorted(pathlib.Path("kubernetes").glob("*.yaml")):
+              docs = list(yaml.safe_load_all(path.read_text()))
+              for doc in docs:
+                  if not doc:
+                      continue
+                  for key in ("apiVersion", "kind", "metadata"):
+                      if key not in doc:
+                          failures.append(f"{path.name}: missing {key}")
+              print(f"{path.name}: {len(docs)} document(s) parsed")
+          if failures:
+              print("\n".join(failures)); sys.exit(1)
+          PY
+
+      - name: Check the deployment keeps its production-readiness settings
+        run: |
+          python - <<'PY'
+          import sys, yaml
+          spec = yaml.safe_load(open("kubernetes/deployment.yaml"))
+          container = spec["spec"]["template"]["spec"]["containers"][0]
+          problems = []
+          if spec["spec"]["replicas"] < 2:
+              problems.append("deployment must keep at least two replicas")
+          for probe in ("livenessProbe", "readinessProbe"):
+              if probe not in container:
+                  problems.append(f"container is missing {probe}")
+          resources = container.get("resources", {})
+          for section in ("requests", "limits"):
+              for resource in ("cpu", "memory"):
+                  if resource not in resources.get(section, {}):
+                      problems.append(f"container is missing resources.{section}.{resource}")
+          if not container.get("envFrom"):
+              problems.append("container should read configuration from the ConfigMap")
+          if problems:
+              print("\n".join(problems)); sys.exit(1)
+          print("deployment manifest satisfies the required settings")
+          PY

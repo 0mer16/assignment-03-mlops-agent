@@ -1,0 +1,11 @@
+stages:
+  train:
+    cmd: python training/train.py --data data/dataset.csv --experiment failure-prediction
+    deps:
+      - data/dataset.csv
+      - training/train.py
+    outs:
+      - models/model.joblib
+    metrics:
+      - metrics.json:
+          cache: false
