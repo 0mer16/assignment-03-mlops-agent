@@ -326,10 +326,35 @@ class RuleBasedPlanner:
 
             if runs.data.get("latest_state") == "failed":
                 failed = ctx.session.call("airflow_failed_tasks", dag_id=dag_id)
-                if failed.ok and failed.data.get("failed_tasks"):
-                    names = [t["task_id"] for t in failed.data["failed_tasks"]]
-                    facts.append(f"Failed task(s) in the latest run: {', '.join(names)}.")
-                    actions.append(f"Inspect the log of '{names[0]}' with airflow_task_log for the root cause.")
+                if failed.ok and failed.data.get("has_failures"):
+                    root = failed.data.get("root_cause_task")
+                    blocked = [t["task_id"] for t in failed.data.get("blocked_by_upstream", [])]
+                    if root:
+                        facts.append(f"The task that actually failed is '{root}'.")
+                    if blocked:
+                        facts.append(
+                            f"{len(blocked)} downstream task(s) never ran because of it: {', '.join(blocked)}."
+                        )
+
+                    # Pull the failing task's log so the answer carries the real
+                    # error rather than just the task name.
+                    if root:
+                        log_result = ctx.session.call(
+                            "airflow_task_log",
+                            dag_id=dag_id,
+                            dag_run_id=failed.data["dag_run_id"],
+                            task_id=root,
+                            try_number=max(1, failed.data["root_failures"][0].get("try_number") or 1),
+                        )
+                        if log_result.ok:
+                            reported = log_result.data.get("exceptions") or _error_lines(
+                                log_result.data.get("log_tail", "")
+                            )
+                            for line in reported[:3]:
+                                facts.append(f"{root} raised: {line}")
+                        actions.append(
+                            f"Fix the cause reported by '{root}' and re-run; nothing downstream of it was promoted."
+                        )
 
         answer = (
             f"Workflow status for {dag_id}, read from the Airflow API."
@@ -475,6 +500,30 @@ class RuleBasedPlanner:
             "recent training runs. Findings and their evidence are below."
         )
         return answer, facts, actions
+
+
+def _error_lines(log_text: str, limit: int = 3) -> list[str]:
+    """Pull the lines that actually explain a task failure out of its log."""
+    markers = ("Error", "error:", "Exception", "Traceback", "raise ", "assert", "failed:")
+    seen: list[str] = []
+    for raw in log_text.splitlines():
+        line = raw.strip()
+        if not line or len(line) > 400:
+            continue
+        if any(marker in line for marker in markers):
+            # Airflow 3 emits JSON log records; show the message, not the envelope.
+            if line.startswith("{") and '"event"' in line:
+                import json as _json
+
+                try:
+                    line = str(_json.loads(line).get("event", line)).strip()
+                except ValueError:
+                    pass
+            if line not in seen:
+                seen.append(line)
+        if len(seen) >= limit:
+            break
+    return seen
 
 
 def _metric_from_question(question: str) -> str:

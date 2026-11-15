@@ -80,13 +80,20 @@ def _get_token(force_refresh: bool = False) -> str:
 def _request(method: str, path: str, **kwargs: Any) -> requests.Response:
     """Call the Airflow API with a bearer token, refreshing it once if expired."""
     url = f"{_base_url()}{API_PREFIX}{path}"
+    # Callers may add their own headers; merge rather than clash with the
+    # Authorization header set here.
+    extra_headers = kwargs.pop("headers", None) or {}
     for attempt in (1, 2):
         token = _get_token(force_refresh=attempt == 2)
         try:
             response = requests.request(
                 method,
                 url,
-                headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                    **extra_headers,
+                },
                 timeout=_HTTP_TIMEOUT,
                 **kwargs,
             )
@@ -251,26 +258,38 @@ def failed_tasks(payload: DagRunRefInput) -> ToolResult:
         )
 
     instances = body.get("task_instances", [])
-    summary = [
-        {
-            "task_id": t.get("task_id"),
-            "state": t.get("state"),
-            "try_number": t.get("try_number"),
-            "duration": t.get("duration"),
-            "start_date": t.get("start_date"),
-        }
-        for t in instances
-    ]
-    failed = [t for t in summary if t["state"] in {"failed", "upstream_failed"}]
+    summary = sorted(
+        (
+            {
+                "task_id": t.get("task_id"),
+                "state": t.get("state"),
+                "try_number": t.get("try_number"),
+                "duration": t.get("duration"),
+                "start_date": t.get("start_date"),
+            }
+            for t in instances
+        ),
+        key=lambda t: t["start_date"] or "9999",
+    )
+
+    # Separating the two matters for diagnosis: upstream_failed tasks did not
+    # fail, they never ran. Pointing a user at one of those sends them to a log
+    # that only says the task was skipped.
+    root_failures = [t for t in summary if t["state"] == "failed"]
+    blocked = [t for t in summary if t["state"] == "upstream_failed"]
+
     return ToolResult(
         tool="airflow_failed_tasks",
         status=ToolStatus.OK,
         data={
             "dag_id": payload.dag_id,
             "dag_run_id": run_id,
-            "failed_tasks": failed,
+            "root_failures": root_failures,
+            "blocked_by_upstream": blocked,
+            "failed_tasks": root_failures + blocked,
             "all_tasks": summary,
-            "has_failures": bool(failed),
+            "has_failures": bool(root_failures or blocked),
+            "root_cause_task": root_failures[0]["task_id"] if root_failures else None,
         },
         source=f"GET {_base_url()}{API_PREFIX}{path}",
     )
@@ -295,8 +314,22 @@ def task_log(payload: TaskLogInput) -> ToolResult:
         content = response.json().get("content", "")
     except ValueError:
         content = response.text
+
+    # Airflow 3 returns structured log chunks. A failing task records the real
+    # exception under error_detail, which is far more reliable than scraping the
+    # rendered text for something that looks like a traceback.
+    exceptions: list[str] = []
     if isinstance(content, list):
-        # Airflow 3 returns structured log chunks rather than one blob of text.
+        for chunk in content:
+            if not isinstance(chunk, dict):
+                continue
+            for detail in chunk.get("error_detail") or []:
+                if not isinstance(detail, dict):
+                    continue
+                exc_type = detail.get("exc_type")
+                exc_value = detail.get("exc_value")
+                if exc_type or exc_value:
+                    exceptions.append(f"{exc_type or 'Error'}: {exc_value}".strip())
         content = "\n".join(
             str(chunk.get("event", chunk)) if isinstance(chunk, dict) else str(chunk)
             for chunk in content
@@ -312,6 +345,7 @@ def task_log(payload: TaskLogInput) -> ToolResult:
             "dag_run_id": payload.dag_run_id,
             "task_id": payload.task_id,
             "try_number": payload.try_number,
+            "exceptions": exceptions,
             "truncated": len(text) > len(tail),
             "log_tail": tail,
         },

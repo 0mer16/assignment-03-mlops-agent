@@ -138,3 +138,70 @@ def test_failed_runs_are_excluded_from_the_ranking(monkeypatch):
     assert result.data["considered"] == 1
     excluded = result.data["excluded_unfinished_runs"]
     assert [r["run_id"] for r in excluded] == ["bad"]
+
+
+def test_failed_tasks_separates_root_cause_from_blocked_tasks(monkeypatch):
+    """upstream_failed tasks did not fail, they never ran.
+
+    Reporting them as failures sends an operator to a log that only says the
+    task was skipped, so the two are kept apart.
+    """
+    from agent.schemas import DagRunRefInput
+    from agent.tools import airflow_tools
+
+    class _Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "task_instances": [
+                    {"task_id": "validate_dataset", "state": "failed", "try_number": 3, "start_date": "1"},
+                    {"task_id": "preprocess_data", "state": "upstream_failed", "try_number": 1, "start_date": "2"},
+                    {"task_id": "train_model", "state": "upstream_failed", "try_number": 1, "start_date": "3"},
+                ]
+            }
+
+    monkeypatch.setattr(airflow_tools, "_request", lambda *a, **k: _Response())
+
+    result = airflow_tools.failed_tasks(DagRunRefInput(dag_id="training_pipeline", dag_run_id="run-1"))
+
+    assert result.status is ToolStatus.OK
+    assert result.data["root_cause_task"] == "validate_dataset"
+    assert [t["task_id"] for t in result.data["blocked_by_upstream"]] == ["preprocess_data", "train_model"]
+    assert len(result.data["root_failures"]) == 1
+
+
+def test_task_log_extracts_the_recorded_exception(monkeypatch):
+    """Airflow 3 records the exception in error_detail; use it, don't scrape text."""
+    from agent.schemas import TaskLogInput
+    from agent.tools import airflow_tools
+
+    class _Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "content": [
+                    {"event": "validated 39 rows"},
+                    {
+                        "event": "Task failed with exception",
+                        "error_detail": [
+                            {
+                                "exc_type": "ValueError",
+                                "exc_value": "dataset has only 39 rows, below the minimum of 500",
+                            }
+                        ],
+                    },
+                ]
+            }
+
+    monkeypatch.setattr(airflow_tools, "_request", lambda *a, **k: _Response())
+
+    result = airflow_tools.task_log(
+        TaskLogInput(dag_id="training_pipeline", dag_run_id="run-1", task_id="validate_dataset", try_number=3)
+    )
+
+    assert result.status is ToolStatus.OK
+    assert result.data["exceptions"] == ["ValueError: dataset has only 39 rows, below the minimum of 500"]
