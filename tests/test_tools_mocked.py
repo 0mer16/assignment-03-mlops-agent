@@ -12,11 +12,11 @@ from agent.schemas import BestRunInput, NamespaceInput, ToolStatus
 from agent.tools import dvc_tools, kubernetes_tools, mlflow_tools
 
 
-def _fake_run(run_id: str, name: str, f1: float, dataset_version: str = "dataset-v1"):
+def _fake_run(run_id: str, name: str, f1: float, dataset_version: str = "dataset-v1", status: str = "FINISHED"):
     """Minimal stand-in for an mlflow Run object."""
     return SimpleNamespace(
         info=SimpleNamespace(
-            run_id=run_id, run_name=name, status="FINISHED", start_time=1, experiment_id="1"
+            run_id=run_id, run_name=name, status=status, start_time=1, experiment_id="1"
         ),
         data=SimpleNamespace(
             metrics={"f1_score": f1, "accuracy": f1 - 0.01},
@@ -118,3 +118,23 @@ def test_dvc_reports_untracked_dataset_clearly(tmp_path, isolated_settings):
 
     assert result.status is ToolStatus.ERROR
     assert "not tracked by DVC" in result.error
+
+
+def test_failed_runs_are_excluded_from_the_ranking(monkeypatch):
+    """A crashed run can still have logged a metric; it must not be able to win."""
+    client = SimpleNamespace(
+        search_experiments=lambda: [SimpleNamespace(experiment_id="1")],
+        search_runs=lambda **kwargs: [
+            _fake_run("good", "finished-run", 0.80),
+            _fake_run("bad", "crashed-run", 0.99, status="FAILED"),
+        ],
+    )
+    monkeypatch.setattr(mlflow_tools, "_client", lambda: client)
+
+    result = mlflow_tools.best_run(BestRunInput(metric="f1_score", limit=5))
+
+    assert result.status is ToolStatus.OK
+    assert result.data["best_run"]["run_id"] == "good"
+    assert result.data["considered"] == 1
+    excluded = result.data["excluded_unfinished_runs"]
+    assert [r["run_id"] for r in excluded] == ["bad"]

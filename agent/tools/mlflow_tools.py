@@ -167,12 +167,22 @@ def best_run(payload: BestRunInput) -> ToolResult:
         order_by=["attributes.start_time DESC"],
         max_results=payload.limit,
     )
-    scored = [(r.data.metrics.get(payload.metric), r) for r in runs if payload.metric in r.data.metrics]
+    # A run that crashed can still have logged a metric before it died. Ranking
+    # those alongside completed runs would let a failed run win, so they are
+    # excluded and counted rather than silently dropped.
+    with_metric = [r for r in runs if payload.metric in r.data.metrics]
+    excluded = [r for r in with_metric if r.info.status != "FINISHED"]
+    scored = [(r.data.metrics[payload.metric], r) for r in with_metric if r.info.status == "FINISHED"]
+
     if not scored:
+        detail = f" ({len(excluded)} run(s) recorded it but did not finish)" if excluded else ""
         return ToolResult(
             tool="mlflow_best_run",
             status=ToolStatus.ERROR,
-            error=f"none of the {len(runs)} most recent runs recorded a metric named {payload.metric!r}",
+            error=(
+                f"none of the {len(runs)} most recent runs completed with a metric named "
+                f"{payload.metric!r}{detail}"
+            ),
             source=f"MlflowClient.search_runs(experiment_ids={experiment_ids})",
         )
 
@@ -196,6 +206,9 @@ def best_run(payload: BestRunInput) -> ToolResult:
             "best_score": winner_score,
             "margin_over_runner_up": margin,
             "considered": len(scored),
+            "excluded_unfinished_runs": [
+                {"run_id": r.info.run_id, "run_name": r.info.run_name, "status": r.info.status} for r in excluded
+            ],
             "ranking": ranking,
             "caveats": [
                 "ranked only on the recorded metric; a single metric is not a promotion decision",
