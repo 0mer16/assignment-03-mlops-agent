@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# local service state, never committed
+mlruns/
+mlartifacts/
+logs/
+airflow_home/
+*.db
+
+# DVC puts the real data in the remote, not in git
+/data/*.csv
+/data/*.parquet
+/dvc-remote/
