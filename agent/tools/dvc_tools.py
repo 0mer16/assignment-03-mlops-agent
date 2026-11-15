@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -41,18 +42,35 @@ DVC_ALLOWED = {"status", "data", "list", "dag", "remote", "version", "diff", "do
 _COMMAND_TIMEOUT = 25
 
 
+def _resolve(executable: str) -> str | None:
+    """Find a command on PATH, or alongside the interpreter running the agent.
+
+    Without the second lookup the agent fails to find dvc whenever it runs from
+    a virtual environment whose Scripts directory is not on PATH.
+    """
+    found = shutil.which(executable)
+    if found:
+        return found
+    bindir = Path(sys.executable).parent
+    for candidate in (bindir / executable, bindir / f"{executable}.exe"):
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
 def _run(executable: str, args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     """Run an allowlisted git or dvc command and return the completed process."""
     allowed = GIT_ALLOWED if executable == "git" else DVC_ALLOWED
     if not args or args[0] not in allowed:
         raise PermissionDenied(f"{executable} subcommand {args[:1]} is not on the read-only allowlist {sorted(allowed)}")
-    if shutil.which(executable) is None:
+    binary = _resolve(executable)
+    if binary is None:
         raise ToolUnavailable(f"{executable} is not installed or not on PATH")
 
     cwd = cwd or get_settings().repo_root
     try:
         return subprocess.run(  # noqa: S603 - fixed executable, allowlisted subcommand, no shell
-            [executable, *args],
+            [binary, *args],
             cwd=cwd,
             capture_output=True,
             text=True,
