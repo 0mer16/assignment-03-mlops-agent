@@ -11,6 +11,7 @@ content hash recorded in the .dvc file, plus the Git commit that recorded it.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -107,10 +108,25 @@ def _read_dvc_pointer(dvc_file: Path) -> dict[str, Any]:
     }
 
 
+# Directories that never contain tracked datasets. Walking them is slow (a
+# virtual environment holds tens of thousands of files) and DVC's own internal
+# directory holds lock files that raise PermissionError while a command runs.
+_SKIP_DIRS = {".dvc", ".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", ".ruff_cache"}
+
+
+def _find_pointers(root: Path) -> list[Path]:
+    """Locate .dvc pointer files, pruning directories that cannot hold one."""
+    pointers: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
+        pointers.extend(Path(dirpath) / name for name in filenames if name.endswith(".dvc"))
+    return sorted(pointers)
+
+
 def list_tracked_datasets(_: EmptyInput) -> ToolResult:
     """Find every dataset DVC tracks in the repository."""
     root = get_settings().repo_root
-    pointers = sorted(p for p in root.rglob("*.dvc") if ".dvc/" not in p.as_posix())
+    pointers = _find_pointers(root)
 
     datasets = []
     for pointer in pointers:
