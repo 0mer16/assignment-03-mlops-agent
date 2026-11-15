@@ -19,3 +19,6 @@ airflow_home/
 /data/*.csv
 /data/*.parquet
 /dvc-remote/
+*.egg-info/
+build/
+dist/
