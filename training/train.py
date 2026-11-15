@@ -126,7 +126,11 @@ def train(
         mlflow.log_params(params)
         mlflow.log_metrics(metrics)
         mlflow.set_tags({**provenance, "git.commit": _git(["rev-parse", "HEAD"]), "trained_by": "training/train.py"})
-        mlflow.sklearn.log_model(model, name="model")
+        # Pin the serialisation format. When skops is present MLflow prefers it,
+        # and skops refuses to save sklearn tree internals unless they are
+        # explicitly trusted, so the same code would work on one machine and
+        # fail on another. cloudpickle behaves the same way everywhere.
+        mlflow.sklearn.log_model(model, name="model", serialization_format="cloudpickle")
         run_id = run.info.run_id
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
