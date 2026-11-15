@@ -104,6 +104,7 @@ def train(
     random_state: int,
     tracking_uri: str | None,
     run_name: str | None = None,
+    provenance_path: Path | None = None,
 ) -> dict[str, Any]:
     """Train, evaluate, and log everything to MLflow."""
     import mlflow
@@ -122,7 +123,13 @@ def train(
     model = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth, random_state=random_state)
     model.fit(x_train, y_train)
     metrics = evaluate(model, x_test, y_test)
-    provenance = dataset_provenance(data_path)
+    # Provenance is recorded against the versioned source dataset, not the
+    # derived copy. The pipeline trains on a preprocessed file that DVC does
+    # not track, and without this the run would lose its link to the data
+    # version entirely.
+    provenance = dataset_provenance(provenance_path or data_path)
+    if provenance_path and Path(provenance_path).resolve() != data_path:
+        provenance["dataset.trained_on"] = _repo_relative(data_path)
 
     if tracking_uri:
         mlflow.set_tracking_uri(tracking_uri)
@@ -161,6 +168,12 @@ def train(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Train the failure-prediction model and log it to MLflow.")
     parser.add_argument("--data", type=Path, default=DEFAULT_DATA)
+    parser.add_argument(
+        "--provenance-from",
+        type=Path,
+        default=None,
+        help="DVC-tracked source dataset to record provenance against, when --data is a derived copy",
+    )
     parser.add_argument("--experiment", default="failure-prediction")
     parser.add_argument("--n-estimators", type=int, default=120)
     parser.add_argument("--max-depth", type=int, default=None)
@@ -173,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     summary = train(
         data_path=args.data,
         experiment=args.experiment,
+        provenance_path=args.provenance_from,
         n_estimators=args.n_estimators,
         max_depth=args.max_depth,
         test_size=args.test_size,

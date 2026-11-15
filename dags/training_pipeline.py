@@ -151,6 +151,9 @@ def training_pipeline():
                 str(REPO / "training" / "train.py"),
                 "--data",
                 str(PROCESSED),
+                # keep the lineage pointing at the DVC-tracked source
+                "--provenance-from",
+                str(DATASET),
                 "--experiment",
                 EXPERIMENT,
                 "--run-name",
