@@ -646,7 +646,7 @@ class GeminiPlanner:
 
         final_text = ""
         for _ in range(MAX_TOOL_STEPS):
-            response = self._client.models.generate_content(model=self.model, contents=contents, config=config)
+            response = self._generate(contents, config)
             calls = getattr(response, "function_calls", None) or []
             if not calls:
                 final_text = (getattr(response, "text", "") or "").strip()
@@ -665,6 +665,30 @@ class GeminiPlanner:
             contents.append(types.Content(role="user", parts=parts))
 
         return self._to_answer(ctx, final_text)
+
+    def _generate(self, contents: list[Any], config: Any) -> Any:
+        """Call the model, retrying the transient overload the API returns under load.
+
+        A 503 from Gemini means "try again", not "this request is wrong", so a
+        couple of short backoffs save a request that would otherwise fall back
+        to the deterministic planner for no good reason.
+        """
+        import time
+
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                return self._client.models.generate_content(
+                    model=self.model, contents=contents, config=config
+                )
+            except Exception as exc:  # noqa: BLE001 - retry only the transient class
+                message = str(exc)
+                if "503" not in message and "UNAVAILABLE" not in message.upper():
+                    raise
+                last_error = exc
+                if attempt < 2:
+                    time.sleep(2 * (attempt + 1))
+        raise ToolUnavailable(f"Gemini is unavailable after 3 attempts: {last_error}")
 
     def _to_answer(self, ctx: PlannerContext, text: str) -> AgentAnswer:
         """Parse the model's JSON, then re-attach the real evidence and gaps."""
