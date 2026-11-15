@@ -1,5 +1,5 @@
 {
-  "run_id": "66a331360a6a45fb8142c4986385761b",
+  "run_id": "b46fbc85dbf446dabe71f0e8bd991e85",
   "experiment": "failure-prediction",
   "metrics": {
     "accuracy": 0.7733333333333333,
@@ -19,5 +19,6 @@
   "dataset.path": "data/dataset.csv",
   "dataset.dvc_hash": "9c8da426164432cf5dd9a9333f560bd1",
   "dataset.git_commit": "1c01f0c4b03cc4f9641588d8c55f8e1865afe73c",
-  "dataset.version": "dataset-v1"
+  "dataset.version": "dataset-v1",
+  "dataset.trained_on": "data/processed/dataset_clean.csv"
 }
