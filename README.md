@@ -229,6 +229,24 @@ Every tool call writes one JSON object per line to `logs/agent.jsonl`:
 
 A `request_id` ties one question to every tool call it caused.
 
+## Reproducing the demonstrations
+
+```bash
+# capture the five scenarios against whatever is currently running
+python scripts/capture_conversations.py --output docs/evidence/conversations.md
+
+# injected failure 1: the deployment serves the old version because the new pods never become ready
+bash scripts/inject_failure_kubernetes.sh inject
+bash scripts/inject_failure_kubernetes.sh restore
+
+# injected failure 2: a corrupt dataset is stopped by the pipeline's validation gate
+bash scripts/inject_failure_dataset.sh inject
+bash scripts/inject_failure_dataset.sh restore      # restores via dvc checkout
+```
+
+Captured output lives in [docs/evidence/](docs/evidence/), and the analysis is in
+[docs/technical-report.md](docs/technical-report.md).
+
 ## Repository layout
 
 ```
@@ -238,5 +256,6 @@ dags/           Airflow training pipeline
 training/       dataset generation, training, promotion
 kubernetes/     namespace, configmap, deployment, service
 tests/          pytest suite
-docs/           technical report
+scripts/        evidence capture and failure injection
+docs/           technical report and exported evidence
 ```
