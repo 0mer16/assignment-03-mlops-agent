@@ -137,6 +137,13 @@ def _facts_from_deployment(result: ToolResult) -> list[str]:
         f"{', '.join(data.get('image_tags') or ['unknown'])} with "
         f"{data.get('ready_replicas')}/{data.get('desired_replicas')} replicas ready."
     ]
+    if not data.get("rollout_complete", True):
+        facts.append(
+            f"A rollout is in progress and has not completed: {data.get('updated_replicas')} of "
+            f"{data.get('desired_replicas')} pod(s) are on the new version and "
+            f"{data.get('unavailable_replicas')} are unavailable. The previous version is still "
+            "serving traffic, which is why the replica counts still look healthy."
+        )
     if data.get("configmap_app_version"):
         match = data.get("version_matches_configmap")
         facts.append(
@@ -343,6 +350,11 @@ class RuleBasedPlanner:
             facts.extend(_facts_from_deployment(version))
             if not version.data.get("fully_available"):
                 actions.append("Not all replicas are ready; the service is degraded rather than healthy.")
+            elif not version.data.get("rollout_complete", True):
+                actions.append(
+                    "The new pods cannot become ready, so the rollout is stuck on the old version. "
+                    "Traffic is still served, but the deployed version is not the one you intended."
+                )
 
         if health.ok:
             if health.data.get("all_healthy"):

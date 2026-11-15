@@ -299,7 +299,14 @@ def deployed_version(payload: DeploymentInput) -> ToolResult:
             "version_matches_configmap": (configmap_version in image_tags) if configmap_version else None,
             "desired_replicas": deployment.spec.replicas,
             "ready_replicas": deployment.status.ready_replicas or 0,
+            "updated_replicas": deployment.status.updated_replicas or 0,
+            "unavailable_replicas": deployment.status.unavailable_replicas or 0,
             "fully_available": (deployment.status.ready_replicas or 0) == deployment.spec.replicas,
+            # During a rolling update the old pods keep serving, so replica
+            # counts alone look healthy while the new version cannot start.
+            # Comparing updated against desired is what exposes a stuck rollout.
+            "rollout_complete": (deployment.status.updated_replicas or 0) == deployment.spec.replicas
+            and not (deployment.status.unavailable_replicas or 0),
         },
         source=f"AppsV1Api.read_namespaced_deployment({name}) + ConfigMap {name}-config",
     )
