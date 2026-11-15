@@ -16,6 +16,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+import yaml
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.model_selection import train_test_split
+
 # MLflow writes a "View run" line containing an emoji to stdout when a run ends.
 # On a Windows console that defaults to cp1252 this raises UnicodeEncodeError
 # from inside end_run(), which leaves the run stuck in RUNNING on the server.
@@ -23,12 +29,6 @@ from typing import Any
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
-
-import pandas as pd
-import yaml
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
-from sklearn.model_selection import train_test_split
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATA = REPO_ROOT / "data" / "dataset.csv"

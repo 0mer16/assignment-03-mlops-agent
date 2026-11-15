@@ -62,7 +62,9 @@ def _run(executable: str, args: list[str], cwd: Path | None = None) -> subproces
     """Run an allowlisted git or dvc command and return the completed process."""
     allowed = GIT_ALLOWED if executable == "git" else DVC_ALLOWED
     if not args or args[0] not in allowed:
-        raise PermissionDenied(f"{executable} subcommand {args[:1]} is not on the read-only allowlist {sorted(allowed)}")
+        raise PermissionDenied(
+            f"{executable} subcommand {args[:1]} is not on the read-only allowlist {sorted(allowed)}"
+        )
     binary = _resolve(executable)
     if binary is None:
         raise ToolUnavailable(f"{executable} is not installed or not on PATH")

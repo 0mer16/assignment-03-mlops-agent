@@ -17,18 +17,18 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from agent.config import Settings, get_settings
 from agent.errors import ToolUnavailable
 from agent.schemas import AgentAnswer, ToolResult, ToolStatus
-from agent.session import ToolSession, first_ok
+from agent.session import ToolSession
 
 MAX_TOOL_STEPS = 8
 
 
-class Intent(str, Enum):
+class Intent(StrEnum):
     """What the user is asking about."""
 
     DATASET_PROVENANCE = "dataset_provenance"
@@ -43,7 +43,9 @@ class Intent(str, Enum):
 # planner is the fallback, so its behaviour should be obvious from reading it.
 _KEYWORDS: dict[Intent, tuple[str, ...]] = {
     Intent.DATASET_PROVENANCE: ("dataset", "data version", "dvc", "provenance", "which data", "training data"),
-    Intent.MODEL_SELECTION: ("best model", "best run", "f1", "accuracy", "compare", "experiment", "metric", "candidate"),
+    Intent.MODEL_SELECTION: (
+        "best model", "best run", "f1", "accuracy", "compare", "experiment", "metric", "candidate",
+    ),
     Intent.PIPELINE: ("pipeline", "dag", "airflow", "trigger", "training run", "workflow", "retrain"),
     Intent.DEPLOYMENT: ("deploy", "kubernetes", "pod", "cluster", "unavailable", "down", "api", "health", "replica"),
     Intent.FULL_REVIEW: ("retraining necessary", "do we need to retrain", "overall", "full review", "end to end"),
@@ -353,7 +355,12 @@ class RuleBasedPlanner:
                     "selector and that readiness probes are passing."
                 )
 
-        healthy = bool(health.ok and health.data.get("all_healthy") and version.ok and version.data.get("fully_available"))
+        healthy = bool(
+            health.ok
+            and health.data.get("all_healthy")
+            and version.ok
+            and version.data.get("fully_available")
+        )
         if healthy:
             answer = "The inference deployment looks healthy, based on live pod, deployment and service state."
         elif health.ok or version.ok or service.ok:

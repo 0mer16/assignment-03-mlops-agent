@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -27,8 +29,6 @@ MODEL_PATH = Path(os.getenv("MODEL_PATH", "/app/models/model.joblib"))
 MODEL_NAME = os.getenv("MODEL_NAME", "failure-prediction")
 
 FEATURES = ["sensor_a", "sensor_b", "sensor_c", "load"]
-
-app = FastAPI(title="MLOps inference API", version=APP_VERSION)
 
 _model: Any | None = None
 _load_error: str | None = None
@@ -49,9 +49,19 @@ def load_model() -> None:
         log.error("could not load model from %s: %s", MODEL_PATH, _load_error)
 
 
-@app.on_event("startup")
-def startup() -> None:
-    load_model()
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Load the model once at startup.
+
+    A load failure is recorded rather than raised: the pod should start and
+    report itself not-ready, which is far easier to diagnose than a crash loop.
+    """
+    if _model is None:
+        load_model()
+    yield
+
+
+app = FastAPI(title="MLOps inference API", version=APP_VERSION, lifespan=lifespan)
 
 
 class PredictRequest(BaseModel):

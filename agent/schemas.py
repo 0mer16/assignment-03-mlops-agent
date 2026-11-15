@@ -7,13 +7,13 @@ service could not be reached", which is the whole point of not inventing answers
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class ToolStatus(str, Enum):
+class ToolStatus(StrEnum):
     """Outcome of a single tool call."""
 
     OK = "ok"

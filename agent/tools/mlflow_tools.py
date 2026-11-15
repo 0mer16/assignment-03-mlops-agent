@@ -43,7 +43,9 @@ def _client():
     try:
         return MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
     except Exception as exc:  # noqa: BLE001 - any client construction failure means no evidence
-        raise ToolUnavailable(f"cannot reach the MLflow tracking server at {settings.mlflow_tracking_uri}: {exc}") from exc
+        raise ToolUnavailable(
+            f"cannot reach the MLflow tracking server at {settings.mlflow_tracking_uri}: {exc}"
+        ) from exc
 
 
 def _call(fn, *args, **kwargs):

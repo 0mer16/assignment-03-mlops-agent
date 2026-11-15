@@ -277,7 +277,10 @@ def failed_tasks(payload: DagRunRefInput) -> ToolResult:
 
 def task_log(payload: TaskLogInput) -> ToolResult:
     """Fetch the log of one task attempt, for diagnosing a failure."""
-    path = f"/dags/{payload.dag_id}/dagRuns/{payload.dag_run_id}/taskInstances/{payload.task_id}/logs/{payload.try_number}"
+    path = (
+        f"/dags/{payload.dag_id}/dagRuns/{payload.dag_run_id}"
+        f"/taskInstances/{payload.task_id}/logs/{payload.try_number}"
+    )
     response = _request("GET", path, headers={"Accept": "application/json"})
     if response.status_code != 200:
         return ToolResult(
@@ -292,7 +295,11 @@ def task_log(payload: TaskLogInput) -> ToolResult:
     except ValueError:
         content = response.text
     if isinstance(content, list):
-        content = "\n".join(str(chunk.get("event", chunk)) if isinstance(chunk, dict) else str(chunk) for chunk in content)
+        # Airflow 3 returns structured log chunks rather than one blob of text.
+        content = "\n".join(
+            str(chunk.get("event", chunk)) if isinstance(chunk, dict) else str(chunk)
+            for chunk in content
+        )
 
     text = str(content)
     tail = text[-4000:]

@@ -34,8 +34,9 @@ MODULE = "kubernetes"
 def _api():
     """Load kube config and return (CoreV1Api, AppsV1Api, ApiException)."""
     try:
-        from kubernetes import client, config
         from kubernetes.client.rest import ApiException
+
+        from kubernetes import client, config
     except ImportError as exc:  # pragma: no cover - dependency is declared
         raise ToolUnavailable(f"the kubernetes client library is not installed: {exc}") from exc
 
@@ -205,7 +206,10 @@ def describe_service(payload: ServiceInput) -> ToolResult:
             "type": service.spec.type,
             "cluster_ip": service.spec.cluster_ip,
             "selector": service.spec.selector,
-            "ports": [{"port": p.port, "target_port": str(p.target_port), "protocol": p.protocol} for p in service.spec.ports or []],
+            "ports": [
+                {"port": p.port, "target_port": str(p.target_port), "protocol": p.protocol}
+                for p in service.spec.ports or []
+            ],
             "endpoint_addresses": endpoint_addresses,
             "has_endpoints": bool(endpoint_addresses),
         },
@@ -311,7 +315,7 @@ def restart_deployment(payload: RestartDeploymentInput) -> ToolResult:
     import datetime
 
     _, apps, ApiException = _api()
-    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    timestamp = datetime.datetime.now(datetime.UTC).isoformat()
     body = {
         "spec": {
             "template": {

@@ -37,7 +37,7 @@ pythonpath = ["."]
 markers = ["integration: needs a real service, skipped in CI"]
 
 [tool.ruff]
-line-length = 110
+line-length = 120
 target-version = "py311"
 
 [tool.ruff.lint]
