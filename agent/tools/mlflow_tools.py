@@ -10,6 +10,7 @@ the agent answer "which dataset version trained this model?" without guessing.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from agent.config import get_settings
@@ -35,6 +36,15 @@ PROVENANCE_TAGS = ("dataset.path", "dataset.dvc_hash", "dataset.git_commit", "da
 def _client():
     """Build an MlflowClient, turning any connection problem into ToolUnavailable."""
     settings = get_settings()
+
+    # MLflow's HTTP client defaults to a 120 second timeout with several retries,
+    # which is far longer than the agent's own per-tool budget. Without this a
+    # slow registry call gets cut off by our timeout before MLflow has finished
+    # retrying, and the agent reports "timed out" instead of the real error.
+    # setdefault keeps any value the operator has set explicitly.
+    os.environ.setdefault("MLFLOW_HTTP_REQUEST_TIMEOUT", str(max(5, int(settings.tool_timeout_seconds // 2))))
+    os.environ.setdefault("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "2")
+
     try:
         from mlflow.tracking import MlflowClient
     except ImportError as exc:  # pragma: no cover - dependency is declared
