@@ -205,3 +205,37 @@ def test_task_log_extracts_the_recorded_exception(monkeypatch):
 
     assert result.status is ToolStatus.OK
     assert result.data["exceptions"] == ["ValueError: dataset has only 39 rows, below the minimum of 500"]
+
+
+def test_dataset_status_separates_data_changes_from_stale_pipeline_stages(monkeypatch):
+    """A stale pipeline stage is not a changed dataset.
+
+    Conflating them made the agent recommend retraining because the training
+    stage's outputs had moved on, even though the data was untouched.
+    """
+    from types import SimpleNamespace
+
+    from agent.schemas import EmptyInput
+    from agent.tools import dvc_tools
+
+    payload = '{"data/dataset.csv.dvc": [{"changed outs": {}}], "train": [{"changed deps": {}}]}'
+    monkeypatch.setattr(
+        dvc_tools, "_run", lambda *a, **k: SimpleNamespace(returncode=0, stdout=payload, stderr="")
+    )
+
+    result = dvc_tools.dataset_status(EmptyInput())
+
+    assert result.status is ToolStatus.OK
+    assert result.data["changed_datasets"] == ["data/dataset.csv.dvc"]
+    assert result.data["changed_stages"] == ["train"]
+    assert result.data["data_up_to_date"] is False
+
+    # Only a stale stage: the data itself is unchanged.
+    monkeypatch.setattr(
+        dvc_tools,
+        "_run",
+        lambda *a, **k: SimpleNamespace(returncode=0, stdout='{"train": [{"changed deps": {}}]}', stderr=""),
+    )
+    only_stage = dvc_tools.dataset_status(EmptyInput())
+    assert only_stage.data["data_up_to_date"] is True
+    assert only_stage.data["changed_stages"] == ["train"]

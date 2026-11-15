@@ -211,12 +211,18 @@ class RuleBasedPlanner:
         if version.ok:
             facts.extend(_facts_from_provenance(version))
         if status.ok:
-            if status.data.get("up_to_date"):
+            if status.data.get("data_up_to_date", status.data.get("up_to_date")):
                 facts.append("The working copy of the tracked data matches what DVC recorded.")
             else:
-                changed = status.data.get("changed_entries") or []
+                changed = status.data.get("changed_datasets") or []
                 facts.append(f"Tracked data has local changes that DVC has not recorded: {changed}.")
                 actions.append("Run 'dvc status' locally and commit or discard the data change before training.")
+            stale = status.data.get("changed_stages") or []
+            if stale:
+                facts.append(
+                    f"Pipeline stage(s) {stale} are out of date relative to their inputs. "
+                    "That is stage staleness, not a change to the dataset itself."
+                )
 
         if version.ok:
             repro = ctx.session.call("dvc_reproduce_instructions", rev="HEAD", path=path)
@@ -460,9 +466,18 @@ class RuleBasedPlanner:
         if dataset.ok:
             facts.extend(_facts_from_provenance(dataset))
         status = ctx.session.call("dvc_dataset_status")
-        if status.ok and not status.data.get("up_to_date"):
-            retrain_reasons.append("tracked data has changed since the recorded version")
-            facts.append(f"DVC reports uncommitted data changes: {status.data.get('changed_entries')}.")
+        if status.ok:
+            if not status.data.get("data_up_to_date", True):
+                retrain_reasons.append("tracked data has changed since the recorded version")
+                facts.append(f"DVC reports uncommitted dataset changes: {status.data.get('changed_datasets')}.")
+            else:
+                facts.append("The tracked dataset still matches the version DVC recorded.")
+            stale = status.data.get("changed_stages") or []
+            if stale:
+                facts.append(
+                    f"DVC pipeline stage(s) {stale} are out of date relative to their inputs, "
+                    "which is not by itself a reason to retrain."
+                )
 
         # 3. what is actually deployed
         deployed = ctx.session.call("k8s_deployed_version")

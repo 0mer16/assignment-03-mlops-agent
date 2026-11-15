@@ -203,11 +203,22 @@ def dataset_status(_: EmptyInput) -> ToolResult:
         payload = {"raw": result.stdout.strip()}
 
     changed = sorted(payload) if isinstance(payload, dict) else []
+
+    # 'dvc status' reports two different things in one object: tracked data that
+    # no longer matches its pointer, and pipeline stages whose deps or outs have
+    # moved on. Only the first means the dataset changed. Treating a stale stage
+    # as changed data would wrongly suggest the model needs retraining.
+    changed_datasets = [entry for entry in changed if entry.endswith(".dvc")]
+    changed_stages = [entry for entry in changed if not entry.endswith(".dvc")]
+
     return ToolResult(
         tool="dvc_dataset_status",
         status=ToolStatus.OK,
         data={
             "up_to_date": not changed,
+            "data_up_to_date": not changed_datasets,
+            "changed_datasets": changed_datasets,
+            "changed_stages": changed_stages,
             "changed_entries": changed,
             "detail": payload,
         },
