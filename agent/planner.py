@@ -45,6 +45,7 @@ _KEYWORDS: dict[Intent, tuple[str, ...]] = {
     Intent.DATASET_PROVENANCE: ("dataset", "data version", "dvc", "provenance", "which data", "training data"),
     Intent.MODEL_SELECTION: (
         "best model", "best run", "f1", "accuracy", "compare", "experiment", "metric", "candidate",
+        "registered model", "registry", "model version",
     ),
     Intent.PIPELINE: ("pipeline", "dag", "airflow", "trigger", "training run", "workflow", "retrain"),
     Intent.DEPLOYMENT: ("deploy", "kubernetes", "pod", "cluster", "unavailable", "down", "api", "health", "replica"),
@@ -223,6 +224,9 @@ class RuleBasedPlanner:
         return answer, facts, actions
 
     def _model_selection(self, ctx: PlannerContext) -> tuple[str, list[str], list[str]]:
+        if any(word in ctx.question.lower() for word in ("registr", "model version")):
+            return self._registry(ctx)
+
         metric = _metric_from_question(ctx.question)
         best = ctx.session.call("mlflow_best_run", metric=metric, limit=5)
 
@@ -251,6 +255,30 @@ class RuleBasedPlanner:
             f"Ranked the most recent runs by {metric} using the MLflow tracking store."
             if best.ok
             else f"I could not rank runs by {metric}; see the uncertainties below."
+        )
+        return answer, facts, actions
+
+    def _registry(self, ctx: PlannerContext) -> tuple[str, list[str], list[str]]:
+        """What has actually been promoted, as opposed to what scored well."""
+        models = ctx.session.call("mlflow_registered_models")
+        facts: list[str] = []
+        actions: list[str] = []
+        if models.ok:
+            entries = models.data.get("models", [])
+            facts.append(f"The registry holds {len(entries)} registered model(s).")
+            for model in entries:
+                for version in model.get("versions", []):
+                    facts.append(
+                        f"{model['name']} version {version['version']} "
+                        f"(run {version['run_id']}, status {version['status']})."
+                    )
+            if not entries:
+                actions.append("Nothing has been promoted yet; a successful pipeline run registers a version.")
+
+        answer = (
+            "Model registry contents, read from the MLflow tracking server."
+            if models.ok
+            else "I could not read the model registry; see the uncertainties below."
         )
         return answer, facts, actions
 
