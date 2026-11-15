@@ -12,8 +12,17 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
+
+# MLflow writes a "View run" line containing an emoji to stdout when a run ends.
+# On a Windows console that defaults to cp1252 this raises UnicodeEncodeError
+# from inside end_run(), which leaves the run stuck in RUNNING on the server.
+# Forcing UTF-8 on our own streams keeps run status correct on every platform.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 import pandas as pd
 import yaml
