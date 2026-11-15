@@ -16,7 +16,9 @@ COPY models/model.joblib ./models/model.joblib
 COPY api/ ./api/
 
 RUN useradd --create-home --uid 10001 appuser && chown -R appuser /app
-USER appuser
+# Numeric, not "appuser": with runAsNonRoot set, the kubelet has to verify the
+# user is not root before the container starts, and it cannot resolve a name.
+USER 10001
 
 EXPOSE 8000
 

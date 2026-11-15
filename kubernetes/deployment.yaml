@@ -54,4 +54,6 @@ spec:
               memory: "512Mi"
           securityContext:
             runAsNonRoot: true
+            # must match the numeric USER in the image
+            runAsUser: 10001
             allowPrivilegeEscalation: false
