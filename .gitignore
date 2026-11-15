@@ -22,3 +22,5 @@ airflow_home/
 *.egg-info/
 build/
 dist/
+models/
+data/processed/
